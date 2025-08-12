@@ -1,13 +1,19 @@
-FROM nginx:alpine
+FROM node:18-alpine
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Create app directory
+WORKDIR /app
 
-# Create log directory
-RUN mkdir -p /var/log/nginx
+# Copy package files
+COPY package*.json ./
 
-# Expose port 8080
+# Install dependencies
+RUN npm install
+
+# Copy application files
+COPY . .
+
+# Expose port 8080 for health checks
 EXPOSE 8080
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start the WebSocket client
+CMD ["node", "client.js"]

@@ -1,0 +1,9 @@
+{
+  "name": "private-proxy-websocket",
+  "version": "1.0.0",
+  "description": "WebSocket-based private proxy client",
+  "main": "client.js",
+  "scripts": {
+    "start": "node client.js"
+  }
+}

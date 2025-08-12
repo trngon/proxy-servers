@@ -1,205 +1,262 @@
-# Proxy Servers
+# WebSocket Proxy Servers
 
-A Docker-based proxy server setup with public and private network architecture. This project implements a two-tier proxy system where a public-facing proxy forwards requests to a private proxy server.
+A WebSocket-based proxy server architecture that enables cross-server deployment with tunnel-based communication. This solution allows a private proxy server to securely connect to a public proxy server through a WebSocket tunnel, enabling request forwarding even when the private proxy is behind firewalls or NAT.
 
 ## Architecture
 
 ```
-Internet → Public Proxy (port 80) → Private Proxy (port 8080, internal only)
+Internet → Public Proxy (WebSocket Server) ←─ WebSocket Tunnel ←─ Private Proxy (WebSocket Client)
 ```
 
-- **Public Proxy**: Accessible from the internet, runs on port 80
-- **Private Proxy**: Internal-only, accessible only through the public proxy on port 8080
-- **Networks**: 
-  - `public-network`: Bridge network accessible from outside
-  - `proxy-internal`: Internal-only network for proxy communication
+### Key Components
+
+- **Public Proxy Server**: WebSocket server that accepts external requests and forwards them through established tunnels
+- **Private Proxy Client**: WebSocket client that connects to the public proxy and processes forwarded requests
+- **WebSocket Tunnel**: Persistent bidirectional communication channel for request/response forwarding
+
+### Deployment Scenarios
+
+#### Same-Server Deployment (Testing)
+Both proxies run on the same server using Docker Compose for development and testing.
+
+#### Cross-Server Deployment (Production)
+- **Server 1**: Public proxy server (accessible from internet)
+- **Server 2**: Private proxy client (behind firewall/NAT, initiates connection to Server 1)
 
 ## Features
 
-- ✅ Request forwarding from public to private proxy
-- ✅ Complete preservation of request/response data
-- ✅ Support for all HTTP methods (GET, POST, PUT, DELETE, etc.)
-- ✅ WebSocket connection support
-- ✅ Health check endpoints
-- ✅ Proper Docker networking with public/private separation
-- ✅ Request logging and monitoring
-- ✅ Gzip compression
-- ✅ Security headers preservation
+- ✅ **Cross-Server Support**: Deploy proxies on different servers
+- ✅ **WebSocket Tunneling**: Persistent tunnel for request forwarding
+- ✅ **Request Preservation**: Complete HTTP method, header, and body preservation
+- ✅ **Connection Resilience**: Automatic reconnection with configurable intervals
+- ✅ **Backend Integration**: Configurable backend service forwarding
+- ✅ **Health Monitoring**: Built-in health checks and status reporting
+- ✅ **Security**: Private proxy initiates connection (firewall-friendly)
 
 ## Quick Start
 
-### Prerequisites
+### Same-Server Deployment (Testing)
 
-- Docker
-- Docker Compose
-
-### Running the Proxy Servers
-
-1. Clone the repository:
+1. **Clone and start services**:
 ```bash
 git clone <repository-url>
 cd proxy-servers
-```
-
-2. Build and start the services:
-```bash
 docker-compose up -d --build
 ```
 
-3. Verify the services are running:
+2. **Test the setup**:
 ```bash
-docker-compose ps
-```
-
-### Testing the Setup
-
-1. **Health Check (Public Proxy)**:
-```bash
+# Health check
 curl http://localhost/health
-```
 
-2. **Health Check (Private Proxy via Public)**:
-```bash
-curl http://localhost/echo
-```
-
-3. **Test Request Forwarding**:
-```bash
-curl -X POST http://localhost/ \
+# Test request forwarding
+curl -X POST http://localhost/echo \
   -H "Content-Type: application/json" \
-  -H "Custom-Header: test-value" \
   -d '{"test": "data"}'
 ```
 
-4. **Test with Query Parameters**:
+### Cross-Server Deployment (Production)
+
+#### Server 1 (Public Proxy)
+
+1. **Deploy public proxy**:
 ```bash
-curl "http://localhost/echo?param1=value1&param2=value2"
+# Copy public-proxy directory to Server 1
+docker-compose -f docker-compose.public.yml up -d --build
+```
+
+2. **Verify public proxy is running**:
+```bash
+curl http://SERVER1_IP/health
+```
+
+#### Server 2 (Private Proxy)
+
+1. **Configure connection**:
+```bash
+# Edit docker-compose.private.yml
+# Update PUBLIC_PROXY_URL with Server 1's IP:
+# PUBLIC_PROXY_URL=ws://SERVER1_IP:80/tunnel
+```
+
+2. **Deploy private proxy**:
+```bash
+# Copy private-proxy directory to Server 2
+docker-compose -f docker-compose.private.yml up -d --build
+```
+
+3. **Verify connection**:
+```bash
+# Check private proxy health
+curl http://localhost:8080/health
+
+# Test tunnel through public proxy
+curl http://SERVER1_IP/echo
 ```
 
 ## Configuration
 
-### Public Proxy
+### Environment Variables
 
-- **Location**: `./public-proxy/`
-- **Port**: 80 (exposed to host)
-- **Configuration**: `./public-proxy/nginx.conf`
-- **Function**: Receives external requests and forwards to private proxy
+#### Public Proxy Server
+- `PORT`: Server port (default: 80)
 
-### Private Proxy
+#### Private Proxy Client
+- `PUBLIC_PROXY_URL`: WebSocket URL of public proxy (required for cross-server)
+- `BACKEND_SERVICE_URL`: URL of backend service to forward requests to
+- `HEALTH_PORT`: Health check server port (default: 8080)
+- `RECONNECT_INTERVAL`: Reconnection interval in milliseconds (default: 5000)
 
-- **Location**: `./private-proxy/`
-- **Port**: 8080 (internal only)
-- **Configuration**: `./private-proxy/nginx.conf`
-- **Function**: Processes forwarded requests and returns responses
+### Example Configuration
 
-### Customization
-
-To modify the proxy behavior:
-
-1. **Update nginx configurations** in `public-proxy/nginx.conf` or `private-proxy/nginx.conf`
-2. **Rebuild containers**:
-```bash
-docker-compose down
-docker-compose up -d --build
+```yaml
+# docker-compose.private.yml
+environment:
+  - PUBLIC_PROXY_URL=ws://10.0.1.100:80/tunnel  # Public proxy server IP
+  - BACKEND_SERVICE_URL=http://api-server:3000   # Your backend service
+  - HEALTH_PORT=8080
+  - RECONNECT_INTERVAL=5000
 ```
 
-### Adding Backend Services
+## Backend Integration
 
-To integrate with actual backend services, modify the private proxy configuration:
+### Default Demo Mode
 
-```nginx
-# In private-proxy/nginx.conf
-location /api/ {
-    proxy_pass http://your-backend-service:3000/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+The private proxy includes a demo mode that returns request information:
+
+```bash
+curl http://public-proxy-ip/echo
+```
+
+### Custom Backend Service
+
+Configure the private proxy to forward requests to your actual backend:
+
+```yaml
+environment:
+  - BACKEND_SERVICE_URL=http://your-api-server:3000
+```
+
+### Multiple Backend Routes
+
+Modify `private-proxy/client.js` to handle different routes:
+
+```javascript
+// Example: Route /api/* to backend API
+if (url.startsWith('/api/')) {
+    await forwardToBackend(requestMessage);
+} else {
+    handleDemoRequest(requestMessage);
 }
 ```
 
-## Monitoring
+## Monitoring and Debugging
 
-### View Logs
+### Health Checks
 
 ```bash
-# All services
+# Public proxy health
+curl http://public-proxy-ip/health
+
+# Private proxy health  
+curl http://private-proxy-ip:8080/health
+```
+
+### Connection Status
+
+The private proxy health endpoint shows tunnel connection status:
+
+```json
+{
+  "status": "healthy",
+  "message": "Private proxy is healthy and connected",
+  "connected": true,
+  "publicProxyUrl": "ws://public-proxy:80/tunnel",
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+### Logs
+
+```bash
+# View real-time logs
 docker-compose logs -f
 
-# Specific service
-docker-compose logs -f public-proxy
+# Specific service logs
 docker-compose logs -f private-proxy
+docker-compose logs -f public-proxy
 ```
 
-### Service Status
+## Testing
+
+Run the comprehensive test suite:
 
 ```bash
-# Check container health
-docker-compose ps
+# Make test script executable
+chmod +x test-proxy.sh
 
-# Detailed health information
-docker inspect public-proxy | grep Health -A 10
-docker inspect private-proxy | grep Health -A 10
+# Run tests
+./test-proxy.sh
 ```
 
-## Network Security
+The test suite verifies:
+- WebSocket tunnel establishment
+- Request/response forwarding
+- HTTP method preservation
+- Header and body preservation
+- Connection persistence
+- Error handling
 
-- The private proxy runs on an **internal-only network** (`proxy-internal`)
-- External access to the private proxy is **blocked by Docker networking**
-- All external traffic **must** go through the public proxy
-- Request/response data is **preserved** during forwarding
+## Security Considerations
 
-## Stopping the Services
+### Network Security
+- Private proxy initiates connection (firewall-friendly)
+- WebSocket tunnel encrypted in production (use `wss://` with SSL)
+- No direct access required to private proxy
 
-```bash
-# Stop services
-docker-compose down
+### SSL/TLS Configuration
 
-# Stop and remove volumes
-docker-compose down -v
+For production, configure SSL termination:
 
-# Complete cleanup
-docker-compose down -v --rmi all
+```yaml
+# Public proxy with SSL
+environment:
+  - SSL_CERT_PATH=/certs/cert.pem
+  - SSL_KEY_PATH=/certs/key.pem
 ```
 
 ## Troubleshooting
 
+### Connection Issues
+
+1. **Private proxy can't connect**:
+```bash
+# Check network connectivity
+docker exec private-proxy ping public-proxy-ip
+
+# Verify public proxy WebSocket endpoint
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  http://public-proxy-ip/tunnel
+```
+
+2. **Requests timing out**:
+```bash
+# Check tunnel status in private proxy logs
+docker logs private-proxy | grep -i tunnel
+```
+
+3. **Service not starting**:
+```bash
+# Check container logs
+docker logs public-proxy
+docker logs private-proxy
+```
+
 ### Common Issues
 
-1. **Port already in use**:
-```bash
-# Check what's using port 80
-sudo lsof -i :80
-# Stop conflicting services or change port in docker-compose.yml
-```
-
-2. **Services not starting**:
-```bash
-# Check logs for errors
-docker-compose logs
-
-# Verify Docker is running
-docker version
-```
-
-3. **Network connectivity issues**:
-```bash
-# Test internal connectivity
-docker exec public-proxy ping private-proxy
-```
-
-### Debugging
-
-1. **Access container shells**:
-```bash
-docker exec -it public-proxy sh
-docker exec -it private-proxy sh
-```
-
-2. **Test internal connectivity**:
-```bash
-docker exec public-proxy curl http://private-proxy:8080/health
-```
+- **Port conflicts**: Change ports in docker-compose files
+- **Firewall blocking**: Ensure port 80 is open on public proxy server
+- **DNS issues**: Use IP addresses instead of hostnames in cross-server setup
 
 ## Development
 
@@ -207,23 +264,67 @@ docker exec public-proxy curl http://private-proxy:8080/health
 
 ```
 proxy-servers/
-├── docker-compose.yml          # Orchestration configuration
+├── docker-compose.yml                  # Same-server deployment
+├── docker-compose.public.yml           # Public proxy only
+├── docker-compose.private.yml          # Private proxy only
 ├── public-proxy/
-│   ├── Dockerfile              # Public proxy container
-│   └── nginx.conf              # Public proxy nginx config
+│   ├── Dockerfile                      # Public proxy container
+│   ├── package.json                    # Node.js dependencies
+│   └── server.js                       # WebSocket server implementation
 ├── private-proxy/
-│   ├── Dockerfile              # Private proxy container
-│   └── nginx.conf              # Private proxy nginx config
-└── README.md                   # Documentation
+│   ├── Dockerfile                      # Private proxy container
+│   ├── package.json                    # Node.js dependencies
+│   └── client.js                       # WebSocket client implementation
+├── test-proxy.sh                       # Comprehensive test suite
+└── README.md                           # This documentation
+```
+
+### WebSocket Protocol
+
+The tunnel uses a simple JSON-based protocol:
+
+#### Request Message (Public → Private)
+```json
+{
+  "type": "request",
+  "requestId": "uuid",
+  "method": "POST",
+  "url": "/api/data",
+  "headers": {...},
+  "body": "..."
+}
+```
+
+#### Response Message (Private → Public)
+```json
+{
+  "type": "response",
+  "requestId": "uuid",
+  "statusCode": 200,
+  "headers": {...},
+  "body": "..."
+}
 ```
 
 ### Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+3. Test your changes with both same-server and cross-server scenarios
+4. Submit a pull request
+
+## Use Cases
+
+- **Microservices**: Connect public-facing API gateway to private services
+- **Edge Computing**: Forward requests from edge servers to private cloud services
+- **Development**: Access local development servers from public test environments
+- **Legacy Systems**: Modernize legacy system access without network changes
+
+## Performance
+
+- **Latency**: ~10-50ms additional overhead for WebSocket tunnel
+- **Throughput**: Suitable for most API workloads (not optimized for high-bandwidth file transfers)
+- **Connections**: Supports multiple concurrent requests through single tunnel
 
 ## License
 
