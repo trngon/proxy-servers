@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # Public-facing proxy server
+  public-proxy:
+    build: ./public-proxy
+    container_name: public-proxy
+    ports:
+      - "80:80"
+    networks:
+      - public-network
+      - proxy-internal
+    depends_on:
+      - private-proxy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Private proxy server (only accessible through public proxy)
+  private-proxy:
+    build: ./private-proxy
+    container_name: private-proxy
+    networks:
+      - proxy-internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  # Public network - accessible from outside
+  public-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+    
+  # Private internal network - only for proxy communication
+  proxy-internal:
+    driver: bridge
+    internal: true  # This makes the network internal-only
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  # Optional: persist logs
+  nginx-logs:
+    driver: local
