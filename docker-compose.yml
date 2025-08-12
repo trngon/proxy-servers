@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Public-facing proxy server
   public-proxy:
