@@ -1,0 +1,22 @@
+# Docker Compose for Public Proxy Server (Server 1)
+services:
+  public-proxy:
+    build: ./public-proxy
+    container_name: public-proxy
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    environment:
+      - PORT=80
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge

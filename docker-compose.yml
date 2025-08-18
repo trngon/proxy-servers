@@ -1,0 +1,54 @@
+services:
+  # Public-facing WebSocket proxy server
+  public-proxy:
+    build: ./public-proxy
+    container_name: public-proxy
+    ports:
+      - "80:80"
+    networks:
+      - public-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    environment:
+      - PORT=80
+
+  # Private proxy WebSocket client (connects to public proxy)
+  private-proxy:
+    build: ./private-proxy
+    container_name: private-proxy
+    networks:
+      - public-network  # Needs access to reach public proxy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    environment:
+      # For same-server testing - change this for cross-server deployment
+      - PUBLIC_PROXY_URL=ws://public-proxy:80/tunnel
+      # Configure your backend service URL here
+      - BACKEND_SERVICE_URL=http://httpbin.org
+      - HEALTH_PORT=8080
+      - RECONNECT_INTERVAL=5000
+    depends_on:
+      - public-proxy
+
+networks:
+  # Public network - both containers need access for WebSocket connection
+  public-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  # Optional: persist logs
+  app-logs:
+    driver: local

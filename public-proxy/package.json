@@ -1,0 +1,9 @@
+{
+  "name": "public-proxy-websocket",
+  "version": "1.0.0",
+  "description": "WebSocket-based public proxy server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

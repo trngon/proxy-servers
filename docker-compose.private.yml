@@ -1,0 +1,27 @@
+# Docker Compose for Private Proxy Client (Server 2)
+services:
+  private-proxy:
+    build: ./private-proxy
+    container_name: private-proxy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    ports:
+      - "8080:8080"  # Expose health check port
+    environment:
+      # IMPORTANT: Replace with your actual public proxy server IP/domain
+      - PUBLIC_PROXY_URL=ws://YOUR_PUBLIC_PROXY_IP:80/tunnel
+      # Configure your backend service URL here
+      - BACKEND_SERVICE_URL=http://your-backend-service:3000
+      - HEALTH_PORT=8080
+      - RECONNECT_INTERVAL=5000
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
